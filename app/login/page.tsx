@@ -14,7 +14,7 @@ export default function LogIn() {
 
       <div className="mt-8 flex w-full max-w-sm flex-col gap-4">
         <button
-          onClick={() => signIn("google", { callbackUrl: "/" })}
+          onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
           className="flex items-center justify-center gap-3 rounded-lg bg-white text-slate-900 px-6 py-3 font-semibold hover:bg-slate-100"
         >
           <svg width="20" height="20" viewBox="0 0 48 48">
