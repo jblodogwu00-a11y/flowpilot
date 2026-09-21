@@ -2,9 +2,38 @@
 
 import { signIn } from "next-auth/react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function SignUp() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    const res = await fetch("/api/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password }),
+    });
+
+    const data = await res.json();
+    setLoading(false);
+
+    if (!res.ok) {
+      setError(data.error || "Something went wrong");
+      return;
+    }
+
+    router.push("/login");
+  }
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-slate-950 text-white px-6">
@@ -13,7 +42,7 @@ export default function SignUp() {
 
       <div className="mt-8 flex w-full max-w-sm flex-col gap-4">
         <button
-          onClick={() => signIn("google", { callbackUrl: "/" })}
+          onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
           className="flex items-center justify-center gap-3 rounded-lg bg-white text-slate-900 px-6 py-3 font-semibold hover:bg-slate-100"
         >
           <svg width="20" height="20" viewBox="0 0 48 48">
@@ -27,15 +56,21 @@ export default function SignUp() {
 
         <div className="text-center text-slate-500 text-sm">or</div>
 
-        <form className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <input
             type="text"
             placeholder="Full name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
             className="rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 text-white placeholder-slate-500"
           />
           <input
             type="email"
             placeholder="Email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
             className="rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 text-white placeholder-slate-500"
           />
 
@@ -43,6 +78,9 @@ export default function SignUp() {
             <input
               type={showPassword ? "text" : "password"}
               placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
               className="w-full rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 pr-12 text-white placeholder-slate-500"
             />
             <button
@@ -63,11 +101,14 @@ export default function SignUp() {
             </button>
           </div>
 
+          {error && <p className="text-red-400 text-sm">{error}</p>}
+
           <button
             type="submit"
-            className="rounded-lg bg-blue-600 px-6 py-3 font-semibold hover:bg-blue-500"
+            disabled={loading}
+            className="rounded-lg bg-blue-600 px-6 py-3 font-semibold hover:bg-blue-500 disabled:opacity-50"
           >
-            Create Account
+            {loading ? "Creating account..." : "Create Account"}
           </button>
         </form>
       </div>
