@@ -8,11 +8,6 @@ const prisma = new PrismaClient();
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
   trustHost: true,
-  callbacks: {
-    async redirect({ baseUrl }) {
-      return `${baseUrl}/dashboard`;
-    },
-  },
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
