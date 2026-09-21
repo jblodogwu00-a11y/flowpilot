@@ -2,10 +2,37 @@
 
 import { signIn } from "next-auth/react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function LogIn() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    const res = await signIn("credentials", {
+      email,
+      password,
+      redirect: false,
+    });
+
+    setLoading(false);
+
+    if (res?.error) {
+      setError("Invalid email or password");
+      return;
+    }
+
+    router.push("/dashboard");
+  }
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-slate-950 text-white px-6">
@@ -28,10 +55,13 @@ export default function LogIn() {
 
         <div className="text-center text-slate-500 text-sm">or</div>
 
-        <form className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <input
             type="email"
             placeholder="Email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
             className="rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 text-white placeholder-slate-500"
           />
 
@@ -39,6 +69,9 @@ export default function LogIn() {
             <input
               type={showPassword ? "text" : "password"}
               placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
               className="w-full rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 pr-12 text-white placeholder-slate-500"
             />
             <button
@@ -65,11 +98,14 @@ export default function LogIn() {
             </Link>
           </div>
 
+          {error && <p className="text-red-400 text-sm">{error}</p>}
+
           <button
             type="submit"
-            className="rounded-lg bg-blue-600 px-6 py-3 font-semibold hover:bg-blue-500"
+            disabled={loading}
+            className="rounded-lg bg-blue-600 px-6 py-3 font-semibold hover:bg-blue-500 disabled:opacity-50"
           >
-            Log In
+            {loading ? "Logging in..." : "Log In"}
           </button>
         </form>
       </div>
