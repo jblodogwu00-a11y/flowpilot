@@ -1,6 +1,7 @@
-import { auth } from "../../auth";
+import { auth } from "../../../auth";
 import { redirect } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 
 export default async function Dashboard() {
   const session = await auth();
@@ -37,10 +38,10 @@ export default async function Dashboard() {
         </p>
 
         <div className="mt-10 grid gap-6 md:grid-cols-3">
-          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+          <Link href="/contacts" className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 hover:border-blue-600 transition">
             <p className="text-sm text-slate-400">Contacts</p>
             <p className="mt-2 text-3xl font-bold">0</p>
-          </div>
+          </Link>
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
             <p className="text-sm text-slate-400">Active Automations</p>
             <p className="mt-2 text-3xl font-bold">0</p>
