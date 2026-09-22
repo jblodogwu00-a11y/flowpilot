@@ -4,6 +4,7 @@ import { signIn } from "next-auth/react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import ThemeToggle from "../components/ThemeToggle";
 
 export default function LogIn() {
   const router = useRouter();
@@ -35,14 +36,18 @@ export default function LogIn() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-slate-950 text-white px-6">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-white text-slate-900 dark:bg-slate-950 dark:text-white px-6 transition-colors">
+      <div className="absolute top-6 right-6">
+        <ThemeToggle />
+      </div>
+
       <h1 className="text-3xl font-bold">Log in to FlowPilot</h1>
-      <p className="mt-2 text-slate-400">Welcome back.</p>
+      <p className="mt-2 text-slate-500 dark:text-slate-400">Welcome back.</p>
 
       <div className="mt-8 flex w-full max-w-sm flex-col gap-4">
         <button
           onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-          className="flex items-center justify-center gap-3 rounded-lg bg-white text-slate-900 px-6 py-3 font-semibold hover:bg-slate-100"
+          className="flex items-center justify-center gap-3 rounded-lg bg-white text-slate-900 border border-slate-300 px-6 py-3 font-semibold hover:bg-slate-50"
         >
           <svg width="20" height="20" viewBox="0 0 48 48">
             <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.5 5.5 29.5 3.5 24 3.5 12.7 3.5 3.5 12.7 3.5 24S12.7 44.5 24 44.5 44.5 35.3 44.5 24c0-1.2-.1-2.4-.3-3.5z"/>
@@ -53,7 +58,7 @@ export default function LogIn() {
           Continue with Google
         </button>
 
-        <div className="text-center text-slate-500 text-sm">or</div>
+        <div className="text-center text-slate-400 dark:text-slate-500 text-sm">or</div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <input
@@ -62,7 +67,7 @@ export default function LogIn() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 text-white placeholder-slate-500"
+            className="rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 px-4 py-3 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
           />
 
           <div className="relative">
@@ -72,12 +77,12 @@ export default function LogIn() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 pr-12 text-white placeholder-slate-500"
+              className="w-full rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 px-4 py-3 pr-12 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-white"
             >
               {showPassword ? (
                 <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -93,17 +98,17 @@ export default function LogIn() {
           </div>
 
           <div className="text-right">
-            <Link href="/forgot-password" className="text-sm text-blue-400 hover:underline">
+            <Link href="/forgot-password" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
               Forgot password?
             </Link>
           </div>
 
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {error && <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>}
 
           <button
             type="submit"
             disabled={loading}
-            className="rounded-lg bg-blue-600 px-6 py-3 font-semibold hover:bg-blue-500 disabled:opacity-50"
+            className="rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
           >
             {loading ? "Logging in..." : "Log In"}
           </button>
