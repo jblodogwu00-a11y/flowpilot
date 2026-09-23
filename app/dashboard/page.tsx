@@ -44,10 +44,10 @@ export default async function Dashboard() {
             <p className="text-sm text-slate-500 dark:text-slate-400">Contacts</p>
             <p className="mt-2 text-3xl font-bold">0</p>
           </Link>
-          <Link href="/lists" className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-6">
-            <p className="text-sm text-slate-500 dark:text-slate-400">Active Automations</p>
+          <Link href="/lists" className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-6 hover:border-blue-600 transition">
+            <p className="text-sm text-slate-500 dark:text-slate-400">Contact Lists</p>
             <p className="mt-2 text-3xl font-bold">0</p>
-          </div>
+          </Link>
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-6">
             <p className="text-sm text-slate-500 dark:text-slate-400">Messages Sent</p>
             <p className="mt-2 text-3xl font-bold">0</p>
