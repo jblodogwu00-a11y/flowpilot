@@ -18,6 +18,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
     contacts      Contact[]
+      contactLists  ContactList[]
 }
 
 model Account {
@@ -55,8 +56,21 @@ model Contact {
   tags      String[] @default([])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+    lists     ContactList[] @relation("ContactToList")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+model ContactList {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  killSwitchTag String?
+  createdAt     DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contacts Contact[] @relation("ContactToList")
 
   @@index([userId])
 }
