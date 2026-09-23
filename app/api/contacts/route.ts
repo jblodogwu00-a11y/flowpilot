@@ -48,3 +48,60 @@ export async function POST(req: Request) {
 
   return NextResponse.json(contact);
 }
+
+export async function PATCH(req: Request) {
+  const session = await auth();
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+  const { id, name, email, phone, tags } = await req.json();
+
+  if (!id) {
+    return NextResponse.json({ error: "Contact id is required" }, { status: 400 });
+  }
+
+  const existing = await prisma.contact.findFirst({ where: { id, userId: user.id } });
+  if (!existing) {
+    return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+  }
+
+  const updated = await prisma.contact.update({
+    where: { id },
+    data: {
+      name: name ?? existing.name,
+      email: email ?? existing.email,
+      phone: phone ?? existing.phone,
+      tags: tags ?? existing.tags,
+    },
+  });
+
+  return NextResponse.json(updated);
+}
+
+export async function DELETE(req: Request) {
+  const session = await auth();
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+  const { id } = await req.json();
+  if (!id) {
+    return NextResponse.json({ error: "Contact id is required" }, { status: 400 });
+  }
+
+  const existing = await prisma.contact.findFirst({ where: { id, userId: user.id } });
+  if (!existing) {
+    return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+  }
+
+  await prisma.contact.delete({ where: { id } });
+
+  return NextResponse.json({ success: true });
+}
