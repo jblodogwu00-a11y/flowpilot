@@ -207,7 +207,9 @@ export default function Lists() {
                   </div>
                 ) : (
                   <div key={l.id} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-6">
-                    <h3 className="text-lg font-bold">{l.name}</h3>
+                                        <Link href={`/lists/${l.id}`} className="text-lg font-bold hover:text-blue-600 dark:hover:text-blue-400">
+                      {l.name}
+                    </Link>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                       {l.contacts.length} contact{l.contacts.length !== 1 ? "s" : ""}
                     </p>

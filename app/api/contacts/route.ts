@@ -4,7 +4,7 @@ import { auth } from "../../../auth";
 
 const prisma = new PrismaClient();
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await auth();
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -13,9 +13,16 @@ export async function GET() {
   const user = await prisma.user.findUnique({ where: { email: session.user.email } });
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
+  const { searchParams } = new URL(req.url);
+  const listId = searchParams.get("listId");
+
   const contacts = await prisma.contact.findMany({
-    where: { userId: user.id },
+    where: {
+      userId: user.id,
+      ...(listId ? { lists: { some: { id: listId } } } : {}),
+    },
     orderBy: { createdAt: "desc" },
+    include: { lists: true },
   });
 
   return NextResponse.json(contacts);
@@ -30,7 +37,7 @@ export async function POST(req: Request) {
   const user = await prisma.user.findUnique({ where: { email: session.user.email } });
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-  const { name, email, phone, tags } = await req.json();
+  const { name, email, phone, tags, listId } = await req.json();
 
   if (!name && !email && !phone) {
     return NextResponse.json({ error: "Provide at least a name, email, or phone" }, { status: 400 });
@@ -43,6 +50,7 @@ export async function POST(req: Request) {
       email: email || null,
       phone: phone || null,
       tags: tags || [],
+      ...(listId ? { lists: { connect: { id: listId } } } : {}),
     },
   });
 
