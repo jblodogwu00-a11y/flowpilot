@@ -19,6 +19,7 @@ model User {
   sessions      Session[]
     contacts      Contact[]
       contactLists  ContactList[]
+        automations   Automation[]
 }
 
 model Account {
@@ -67,10 +68,26 @@ model ContactList {
   userId        String
   name          String
   killSwitchTag String?
+    automations Automation[]
   createdAt     DateTime @default(now())
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   contacts Contact[] @relation("ContactToList")
 
   @@index([userId])
+}
+model Automation {
+  id        String   @id @default(cuid())
+  userId    String
+  listId    String
+  name      String
+  message   String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  list ContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([listId])
 }
