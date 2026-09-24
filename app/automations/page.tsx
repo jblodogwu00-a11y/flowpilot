@@ -30,6 +30,11 @@ export default function Automations() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editMessage, setEditMessage] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
   async function loadData() {
     setLoading(true);
     const [autoRes, listsRes] = await Promise.all([
@@ -77,6 +82,29 @@ export default function Automations() {
     setListId("");
     setShowForm(false);
     loadData();
+  }
+
+  function startEdit(a: Automation) {
+    setEditingId(a.id);
+    setEditName(a.name);
+    setEditMessage(a.message);
+  }
+
+  async function handleEditSave(id: string) {
+    setEditSaving(true);
+
+    const res = await fetch("/api/automations", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, name: editName, message: editMessage, enabled: true }),
+    });
+
+    setEditSaving(false);
+
+    if (res.ok) {
+      setEditingId(null);
+      loadData();
+    }
   }
 
   async function toggleAutomation(a: Automation) {
@@ -179,34 +207,71 @@ export default function Automations() {
             </div>
           ) : (
             <div className="grid gap-3">
-              {automations.map((a) => (
-                <div key={a.id} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-4 flex items-center justify-between gap-4">
-                  <div>
-                    <p className="font-semibold">{a.name}</p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{a.message}</p>
-                    <Link href={`/lists/${a.list.id}`} className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1 inline-block">
-                      List: {a.list.name}
-                    </Link>
+              {automations.map((a) =>
+                editingId === a.id ? (
+                  <div key={a.id} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-4">
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="w-full rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 px-3 py-2 text-slate-900 dark:text-white mb-3"
+                    />
+                    <textarea
+                      value={editMessage}
+                      onChange={(e) => setEditMessage(e.target.value)}
+                      rows={3}
+                      className="w-full rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 px-3 py-2 text-slate-900 dark:text-white mb-3"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEditSave(a.id)}
+                        disabled={editSaving}
+                        className="rounded bg-blue-600 px-3 py-1.5 text-white text-sm font-semibold hover:bg-blue-500 disabled:opacity-50"
+                      >
+                        {editSaving ? "Saving..." : "Save & Go Live"}
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="rounded border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className={`text-xs rounded-full px-2 py-0.5 ${a.enabled ? "bg-green-100 dark:bg-green-600/20 text-green-700 dark:text-green-300" : "bg-slate-200 dark:bg-slate-800 text-slate-500"}`}>
-                      {a.enabled ? "Active" : "Paused"}
-                    </span>
-                    <button
-                      onClick={() => toggleAutomation(a)}
-                      className="rounded border border-slate-300 dark:border-slate-600 px-3 py-1 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      {a.enabled ? "Pause" : "Activate"}
-                    </button>
-                    <button
-                      onClick={() => deleteAutomation(a.id)}
-                      className="rounded border border-red-300 dark:border-red-700 px-3 py-1 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
-                    >
-                      Delete
-                    </button>
+                ) : (
+                  <div key={a.id} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-4 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-semibold">{a.name}</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{a.message}</p>
+                      <Link href={`/lists/${a.list.id}`} className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1 inline-block">
+                        List: {a.list.name}
+                      </Link>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-xs rounded-full px-2 py-0.5 ${a.enabled ? "bg-green-100 dark:bg-green-600/20 text-green-700 dark:text-green-300" : "bg-slate-200 dark:bg-slate-800 text-slate-500"}`}>
+                        {a.enabled ? "Active" : "Paused"}
+                      </span>
+                      <button
+                        onClick={() => startEdit(a)}
+                        className="rounded border border-slate-300 dark:border-slate-600 px-3 py-1 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => toggleAutomation(a)}
+                        className="rounded border border-slate-300 dark:border-slate-600 px-3 py-1 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        {a.enabled ? "Pause" : "Activate"}
+                      </button>
+                      <button
+                        onClick={() => deleteAutomation(a.id)}
+                        className="rounded border border-red-300 dark:border-red-700 px-3 py-1 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              )}
             </div>
           )}
         </div>
