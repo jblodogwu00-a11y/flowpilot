@@ -1,8 +1,9 @@
-import { auth } from "../../auth";
+import { auth } from "../../../auth";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import ThemeToggle from "../components/ThemeToggle";
+import NavMenu from "../components/NavMenu";
 
 export default async function Dashboard() {
   const session = await auth();
@@ -27,7 +28,8 @@ export default async function Dashboard() {
               className="h-9 w-9 rounded-full"
             />
           )}
-          <span className="text-sm text-slate-600 dark:text-slate-300">{session.user?.name}</span>
+          <span className="text-sm text-slate-600 dark:text-slate-300 hidden sm:inline">{session.user?.name}</span>
+          <NavMenu />
         </div>
       </nav>
 
@@ -48,10 +50,10 @@ export default async function Dashboard() {
             <p className="text-sm text-slate-500 dark:text-slate-400">Contact Lists</p>
             <p className="mt-2 text-3xl font-bold">0</p>
           </Link>
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-6">
-            <p className="text-sm text-slate-500 dark:text-slate-400">Messages Sent</p>
+          <Link href="/automations" className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-6 hover:border-blue-600 transition">
+            <p className="text-sm text-slate-500 dark:text-slate-400">Automations</p>
             <p className="mt-2 text-3xl font-bold">0</p>
-          </div>
+          </Link>
         </div>
 
         <div className="mt-12 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-8 text-center">
