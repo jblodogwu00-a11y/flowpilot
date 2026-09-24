@@ -72,10 +72,15 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Contact id is required" }, { status: 400 });
   }
 
-  const existing = await prisma.contact.findFirst({ where: { id, userId: user.id } });
+  const existing = await prisma.contact.findFirst({
+    where: { id, userId: user.id },
+    include: { lists: true },
+  });
   if (!existing) {
     return NextResponse.json({ error: "Contact not found" }, { status: 404 });
   }
+
+  const newTags = tags ?? existing.tags;
 
   const updated = await prisma.contact.update({
     where: { id },
@@ -83,11 +88,18 @@ export async function PATCH(req: Request) {
       name: name ?? existing.name,
       email: email ?? existing.email,
       phone: phone ?? existing.phone,
-      tags: tags ?? existing.tags,
+      tags: newTags,
     },
   });
 
-  return NextResponse.json(updated);
+  let killSwitchTriggered = false;
+  for (const list of existing.lists) {
+    if (list.killSwitchTag && newTags.includes(list.killSwitchTag)) {
+      killSwitchTriggered = true;
+    }
+  }
+
+  return NextResponse.json({ ...updated, killSwitchTriggered });
 }
 
 export async function DELETE(req: Request) {
