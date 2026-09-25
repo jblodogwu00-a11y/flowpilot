@@ -38,6 +38,7 @@ export default function Contacts() {
   const [editTags, setEditTags] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   async function loadContacts() {
     setLoading(true);
@@ -189,6 +190,29 @@ export default function Contacts() {
 
     if (res.ok) {
       loadContacts();
+    }
+  }
+
+  async function handleTestSend(contactId: string, email: string) {
+    setSendingId(contactId);
+
+    const res = await fetch("/api/send-message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contactId,
+        subject: "Test message from FlowPilot",
+        message: "This is a test email sent from your FlowPilot platform. If you're seeing this, real email sending is working!",
+      }),
+    });
+
+    setSendingId(null);
+
+    if (res.ok) {
+      alert(`Test email sent to ${email}`);
+    } else {
+      const data = await res.json();
+      alert(`Failed to send: ${data.error}`);
     }
   }
 
@@ -407,6 +431,15 @@ export default function Contacts() {
                           >
                             Edit
                           </button>
+                          {c.email && (
+                            <button
+                              onClick={() => handleTestSend(c.id, c.email!)}
+                              disabled={sendingId === c.id}
+                              className="mr-2 rounded border border-blue-300 dark:border-blue-700 px-3 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950 disabled:opacity-50"
+                            >
+                              {sendingId === c.id ? "Sending..." : "Send Test Email"}
+                            </button>
+                          )}
                           <button
                             onClick={() => handleDelete(c.id)}
                             disabled={deletingId === c.id}
