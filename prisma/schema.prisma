@@ -87,7 +87,20 @@ model Automation {
 
   user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   list ContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+    attachments AutomationAttachment[]
 
   @@index([userId])
   @@index([listId])
+}
+model AutomationAttachment {
+  id           String     @id @default(cuid())
+  automationId String
+  filename     String
+  mimeType     String?
+  content      Bytes
+  createdAt    DateTime   @default(now())
+
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
 }

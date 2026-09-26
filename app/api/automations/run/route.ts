@@ -30,12 +30,18 @@ async function runAutomation(
           contacts: true,
         },
       },
+      attachments: true,
     },
   });
 
   if (!automation) {
     throw new Error("Active automation not found");
   }
+
+  const attachments = automation.attachments.map((attachment) => ({
+    filename: attachment.filename,
+    content: Buffer.from(attachment.content).toString("base64"),
+  }));
 
   const results: SendResult[] = [];
 
@@ -93,7 +99,8 @@ async function runAutomation(
     const emailResult = await sendEmail(
       contact.email,
       automation.name,
-      automation.message
+      automation.message,
+      attachments
     );
 
     if (!emailResult.success) {
