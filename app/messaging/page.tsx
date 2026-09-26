@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import ThemeToggle from "../components/ThemeToggle";
 import NavMenu from "../components/NavMenu";
@@ -16,9 +16,12 @@ export default function MessagingPage() {
   const [contactId, setContactId] = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
+  const [attachments, setAttachments] = useState<File[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState("");
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function loadContacts() {
@@ -43,6 +46,38 @@ export default function MessagingPage() {
     loadContacts();
   }, []);
 
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const selectedFiles = Array.from(event.target.files || []);
+
+    if (selectedFiles.length > 0) {
+      setAttachments((current) => [...current, ...selectedFiles]);
+    }
+
+    event.target.value = "";
+  }
+
+  function removeAttachment(index: number) {
+    setAttachments((current) =>
+      current.filter((_, fileIndex) => fileIndex !== index)
+    );
+  }
+
+  function formatFileSize(bytes: number) {
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    }
+
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+
+    if (bytes < 1024 * 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -65,16 +100,19 @@ export default function MessagingPage() {
     setResult("");
 
     try {
+      const formData = new FormData();
+
+      formData.append("contactId", contactId);
+      formData.append("subject", subject);
+      formData.append("message", message);
+
+      attachments.forEach((file) => {
+        formData.append("attachments", file);
+      });
+
       const response = await fetch("/api/send-message", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contactId,
-          subject,
-          message,
-        }),
+        body: formData,
       });
 
       const data = await response.json();
@@ -83,9 +121,17 @@ export default function MessagingPage() {
         throw new Error(data.error || "Failed to send message");
       }
 
-      setResult("Message sent successfully.");
+      setResult(
+        attachments.length > 0
+          ? `Message and ${attachments.length} attachment${
+              attachments.length === 1 ? "" : "s"
+            } sent successfully.`
+          : "Message sent successfully."
+      );
+
       setSubject("");
       setMessage("");
+      setAttachments([]);
     } catch (error) {
       setResult(
         error instanceof Error
@@ -180,6 +226,60 @@ export default function MessagingPage() {
                 rows={10}
                 className="w-full resize-y rounded-xl border border-gray-300 bg-white px-4 py-3 outline-none focus:border-black dark:border-gray-700 dark:bg-gray-950 dark:focus:border-white"
               />
+            </div>
+
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={handleFileChange}
+                className="hidden"
+              />
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sending}
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-medium transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-950 dark:hover:bg-gray-800"
+              >
+                <span className="text-lg">📎</span>
+                Attach File
+              </button>
+
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                You can select one or multiple files.
+              </p>
+
+              {attachments.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {attachments.map((file, index) => (
+                    <div
+                      key={`${file.name}-${index}`}
+                      className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-950"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {file.name}
+                        </p>
+
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {formatFileSize(file.size)}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(index)}
+                        disabled={sending}
+                        className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <button
