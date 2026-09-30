@@ -2,7 +2,7 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-type EmailAttachment = {
+export type EmailAttachment = {
   filename: string;
   content: string;
 };
@@ -15,7 +15,9 @@ export async function sendEmail(
 ) {
   try {
     const result = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev",
+      from:
+        process.env.RESEND_FROM_EMAIL ||
+        "onboarding@resend.dev",
       to,
       subject,
       text,
@@ -25,25 +27,19 @@ export async function sendEmail(
       })),
     });
 
-    if (result.error) {
-      console.error("Resend error:", result.error);
-
-      return {
-        success: false,
-        error: result.error.message,
-      };
-    }
-
     return {
       success: true,
-      id: result.data?.id,
+      data: result,
     };
   } catch (error) {
-    console.error("Email sending error:", error);
+    console.error("Email send error:", error);
 
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to send email.",
     };
   }
 }
