@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/app/lib/prisma";
-import { sendWhatsAppMessage } from "@/app/lib/whatsapp";
+import { PrismaClient } from "@prisma/client";
+import { sendWhatsAppMessage } from "../../../lib/whatsapp";
+
+const prisma = new PrismaClient();
 
 function normalizePhone(phone: string | null | undefined) {
   return (phone || "").replace(/[^\d]/g, "");
