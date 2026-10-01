@@ -60,12 +60,6 @@ async function runAutomation(
   const results: SendResult[] = [];
 
   for (const contact of automation.list.contacts) {
-    /*
-     * WHATSAPP DIAGNOSTIC:
-     * Keep the actual phone value from the database visible
-     * in the Run Now result so we can see why a contact is skipped.
-     */
-
     if (automation.channel === "EMAIL") {
       if (!contact.email) {
         results.push({
@@ -75,10 +69,7 @@ async function runAutomation(
           email: contact.email,
           phone: contact.phone,
           status: "skipped",
-          reason:
-            `Contact has no email address. Phone value: ${
-              contact.phone || "(empty)"
-            }`,
+          reason: "Contact has no email address",
         });
 
         continue;
@@ -132,13 +123,21 @@ async function runAutomation(
       continue;
     }
 
+    /*
+     * IMPORTANT:
+     * Only a previous SUCCESSFUL send should prevent
+     * the contact from being sent again.
+     *
+     * Failed attempts must be allowed to retry.
+     */
     const existingSend = await prisma.$queryRaw<
-      { id: string }[]
+      { id: string; status: string }[]
     >`
-      SELECT "id"
+      SELECT "id", "status"
       FROM "AutomationSend"
       WHERE "automationId" = ${automation.id}
         AND "contactId" = ${contact.id}
+        AND "status" = 'sent'
       LIMIT 1
     `;
 
@@ -150,7 +149,7 @@ async function runAutomation(
         email: contact.email,
         phone: contact.phone,
         status: "skipped",
-        reason: "Already sent",
+        reason: "Already sent successfully",
       });
 
       continue;
@@ -169,11 +168,16 @@ async function runAutomation(
           INSERT INTO "AutomationSend"
             ("automationId", "contactId", "status", "error")
           VALUES
-            (${automation.id}, ${contact.id}, 'failed', 'Email sending failed')
+            (
+              ${automation.id},
+              ${contact.id},
+              'failed',
+              ${emailResult.error || "Email sending failed"}
+            )
           ON CONFLICT ("automationId", "contactId")
           DO UPDATE SET
             "status" = 'failed',
-            "error" = 'Email sending failed'
+            "error" = ${emailResult.error || "Email sending failed"}
         `;
 
         results.push({
@@ -205,11 +209,16 @@ async function runAutomation(
           INSERT INTO "AutomationSend"
             ("automationId", "contactId", "status", "error")
           VALUES
-            (${automation.id}, ${contact.id}, 'failed', 'WhatsApp sending failed')
+            (
+              ${automation.id},
+              ${contact.id},
+              'failed',
+              ${whatsappResult.error || "WhatsApp sending failed"}
+            )
           ON CONFLICT ("automationId", "contactId")
           DO UPDATE SET
             "status" = 'failed',
-            "error" = 'WhatsApp sending failed'
+            "error" = ${whatsappResult.error || "WhatsApp sending failed"}
         `;
 
         results.push({
