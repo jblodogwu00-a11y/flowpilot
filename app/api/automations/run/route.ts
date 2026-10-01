@@ -61,46 +61,59 @@ async function runAutomation(
 
   for (const contact of automation.list.contacts) {
     /*
-     * EMAIL AUTOMATION
+     * WHATSAPP DIAGNOSTIC:
+     * Keep the actual phone value from the database visible
+     * in the Run Now result so we can see why a contact is skipped.
      */
+
     if (automation.channel === "EMAIL") {
       if (!contact.email) {
         results.push({
           automationId: automation.id,
           automationName: automation.name,
           contactId: contact.id,
-          email: null,
+          email: contact.email,
           phone: contact.phone,
           status: "skipped",
-          reason: "Contact has no email address",
+          reason:
+            `Contact has no email address. Phone value: ${
+              contact.phone || "(empty)"
+            }`,
         });
 
         continue;
       }
     }
 
-    /*
-     * WHATSAPP AUTOMATION
-     */
     if (automation.channel === "WHATSAPP") {
-      if (!contact.phone) {
+      const phoneValue = contact.phone;
+
+      console.log(
+        "WHATSAPP AUTOMATION CONTACT:",
+        JSON.stringify({
+          contactId: contact.id,
+          name: contact.name,
+          phone: phoneValue,
+          channel: automation.channel,
+        })
+      );
+
+      if (!phoneValue || !phoneValue.trim()) {
         results.push({
           automationId: automation.id,
           automationName: automation.name,
           contactId: contact.id,
           email: contact.email,
-          phone: null,
+          phone: phoneValue,
           status: "skipped",
-          reason: "Contact has no phone number",
+          reason:
+            "Contact phone field is empty when the automation runs.",
         });
 
         continue;
       }
     }
 
-    /*
-     * KILL SWITCH
-     */
     const killSwitchActive =
       automation.list.killSwitchTag &&
       contact.tags.includes(automation.list.killSwitchTag);
@@ -119,12 +132,6 @@ async function runAutomation(
       continue;
     }
 
-    /*
-     * DUPLICATE SEND PROTECTION
-     *
-     * One contact can only receive the same
-     * automation once.
-     */
     const existingSend = await prisma.$queryRaw<
       { id: string }[]
     >`
@@ -149,9 +156,6 @@ async function runAutomation(
       continue;
     }
 
-    /*
-     * SEND EMAIL
-     */
     if (automation.channel === "EMAIL") {
       const emailResult = await sendEmail(
         contact.email!,
@@ -188,9 +192,6 @@ async function runAutomation(
       }
     }
 
-    /*
-     * SEND WHATSAPP
-     */
     if (automation.channel === "WHATSAPP") {
       const whatsappResult =
         await sendWhatsAppMessage(
@@ -227,9 +228,6 @@ async function runAutomation(
       }
     }
 
-    /*
-     * MARK AS SENT
-     */
     await prisma.$executeRaw`
       INSERT INTO "AutomationSend"
         ("automationId", "contactId", "status")
@@ -262,9 +260,6 @@ export async function POST(req: Request) {
     let userId: string | null = null;
     let isCronRequest = false;
 
-    /*
-     * NORMAL LOGGED-IN REQUEST
-     */
     if (session?.user?.email) {
       const user = await prisma.user.findUnique({
         where: {
@@ -281,9 +276,6 @@ export async function POST(req: Request) {
 
       userId = user.id;
     } else {
-      /*
-       * CRON REQUEST
-       */
       const authHeader =
         req.headers.get("authorization");
 
@@ -309,11 +301,6 @@ export async function POST(req: Request) {
     const requestedAutomationId =
       body?.automationId;
 
-    /*
-     * CRON MODE
-     *
-     * Runs every enabled automation.
-     */
     if (isCronRequest) {
       const enabledAutomations =
         await prisma.automation.findMany({
@@ -362,9 +349,6 @@ export async function POST(req: Request) {
       });
     }
 
-    /*
-     * MANUAL MODE
-     */
     if (!userId) {
       return NextResponse.json(
         { error: "Unauthorized" },
