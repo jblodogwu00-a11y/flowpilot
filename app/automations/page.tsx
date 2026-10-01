@@ -365,15 +365,73 @@ export default function Automations() {
         return;
       }
 
-      setRunMessage(
+      const results = Array.isArray(data.results)
+        ? data.results
+        : [];
+
+      const failedResults = results.filter(
+        (result: {
+          status?: string;
+          reason?: string;
+        }) => result.status === "failed"
+      );
+
+      const skippedResults = results.filter(
+        (result: {
+          status?: string;
+          reason?: string;
+        }) => result.status === "skipped"
+      );
+
+      let message =
         `"${automation.name}" finished — ${
           data.sent || 0
         } sent, ${
           data.skipped || 0
         } skipped, ${
           data.failed || 0
-        } failed.`
-      );
+        } failed.`;
+
+      if (failedResults.length > 0) {
+        const failureReasons = failedResults
+          .map(
+            (result: {
+              reason?: string;
+            }) =>
+              result.reason ||
+              "Unknown sending error"
+          )
+          .filter(Boolean);
+
+        if (failureReasons.length > 0) {
+          message += `\n\nError: ${failureReasons.join(
+            " | "
+          )}`;
+        }
+      }
+
+      if (
+        failedResults.length === 0 &&
+        skippedResults.length > 0
+      ) {
+        const skipReasons = skippedResults
+          .map(
+            (result: {
+              reason?: string;
+            }) =>
+              result.reason ||
+              "Unknown skip reason"
+          )
+          .filter(Boolean);
+
+        if (skipReasons.length > 0) {
+          message += `\n\nReason: ${skipReasons.join(
+            " | "
+          )}`;
+        }
+      }
+
+      setRunMessage(message);
     } catch {
       setRunMessage(
         "Something went wrong while running the automation."
@@ -611,7 +669,7 @@ export default function Automations() {
         )}
 
         {runMessage && (
-          <div className="mt-6 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 px-4 py-3 text-sm text-blue-700 dark:text-blue-300">
+          <div className="mt-6 whitespace-pre-wrap rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 px-4 py-3 text-sm text-blue-700 dark:text-blue-300">
             {runMessage}
           </div>
         )}
