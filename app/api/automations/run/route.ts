@@ -1,415 +1,291 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { auth } from "../../../../auth";
-import { sendEmail } from "../../../lib/email";
-import {
-  sendWhatsAppMessage,
-  type WhatsAppAttachment,
-} from "../../../lib/whatsapp";
+import { sendWhatsAppMessage } from "../../../lib/whatsapp";
 
 const prisma = new PrismaClient();
 
-type SendResult = {
-  automationId: string;
-  automationName: string;
-  contactId: string;
-  email: string | null;
-  phone: string | null;
-  status: "sent" | "skipped" | "failed";
-  reason?: string;
-};
-
-async function runAutomation(
-  automationId: string,
-  userId: string
-): Promise<SendResult[]> {
-  const automation = await prisma.automation.findFirst({
-    where: {
-      id: automationId,
-      userId,
-      enabled: true,
-    },
-    include: {
-      list: {
-        include: {
-          contacts: true,
-        },
-      },
-      attachments: true,
-    },
-  });
-
-  if (!automation) {
-    throw new Error("Active automation not found");
-  }
-
-  const emailAttachments = automation.attachments.map(
-    (attachment) => ({
-      filename: attachment.filename,
-      content: Buffer.from(attachment.content).toString("base64"),
-    })
-  );
-
-  const whatsappAttachments: WhatsAppAttachment[] =
-    automation.attachments.map((attachment) => ({
-      filename: attachment.filename,
-      mimeType: attachment.mimeType,
-      content: Buffer.from(attachment.content),
-    }));
-
-  const results: SendResult[] = [];
-
-  for (const contact of automation.list.contacts) {
-    if (automation.channel === "EMAIL") {
-      if (!contact.email) {
-        results.push({
-          automationId: automation.id,
-          automationName: automation.name,
-          contactId: contact.id,
-          email: contact.email,
-          phone: contact.phone,
-          status: "skipped",
-          reason: "Contact has no email address",
-        });
-
-        continue;
-      }
-    }
-
-    if (automation.channel === "WHATSAPP") {
-      const phoneValue = contact.phone;
-
-      console.log(
-        "WHATSAPP AUTOMATION CONTACT:",
-        JSON.stringify({
-          contactId: contact.id,
-          name: contact.name,
-          phone: phoneValue,
-          channel: automation.channel,
-        })
-      );
-
-      if (!phoneValue || !phoneValue.trim()) {
-        results.push({
-          automationId: automation.id,
-          automationName: automation.name,
-          contactId: contact.id,
-          email: contact.email,
-          phone: phoneValue,
-          status: "skipped",
-          reason:
-            "Contact phone field is empty when the automation runs.",
-        });
-
-        continue;
-      }
-    }
-
-    const killSwitchActive =
-      automation.list.killSwitchTag &&
-      contact.tags.includes(automation.list.killSwitchTag);
-
-    if (killSwitchActive) {
-      results.push({
-        automationId: automation.id,
-        automationName: automation.name,
-        contactId: contact.id,
-        email: contact.email,
-        phone: contact.phone,
-        status: "skipped",
-        reason: "Kill switch tag detected",
-      });
-
-      continue;
-    }
-
-    /*
-     * IMPORTANT:
-     * Only a previous SUCCESSFUL send should prevent
-     * the contact from being sent again.
-     *
-     * Failed attempts must be allowed to retry.
-     */
-    const existingSend = await prisma.$queryRaw<
-      { id: string; status: string }[]
-    >`
-      SELECT "id", "status"
-      FROM "AutomationSend"
-      WHERE "automationId" = ${automation.id}
-        AND "contactId" = ${contact.id}
-        AND "status" = 'sent'
-      LIMIT 1
-    `;
-
-    if (existingSend.length > 0) {
-      results.push({
-        automationId: automation.id,
-        automationName: automation.name,
-        contactId: contact.id,
-        email: contact.email,
-        phone: contact.phone,
-        status: "skipped",
-        reason: "Already sent successfully",
-      });
-
-      continue;
-    }
-
-    if (automation.channel === "EMAIL") {
-      const emailResult = await sendEmail(
-        contact.email!,
-        automation.name,
-        automation.message,
-        emailAttachments
-      );
-
-      if (!emailResult.success) {
-        await prisma.$executeRaw`
-          INSERT INTO "AutomationSend"
-            ("automationId", "contactId", "status", "error")
-          VALUES
-            (
-              ${automation.id},
-              ${contact.id},
-              'failed',
-              ${emailResult.error || "Email sending failed"}
-            )
-          ON CONFLICT ("automationId", "contactId")
-          DO UPDATE SET
-            "status" = 'failed',
-            "error" = ${emailResult.error || "Email sending failed"}
-        `;
-
-        results.push({
-          automationId: automation.id,
-          automationName: automation.name,
-          contactId: contact.id,
-          email: contact.email,
-          phone: contact.phone,
-          status: "failed",
-          reason:
-            emailResult.error ||
-            "Email sending failed",
-        });
-
-        continue;
-      }
-    }
-
-    if (automation.channel === "WHATSAPP") {
-      const whatsappResult =
-        await sendWhatsAppMessage(
-          contact.phone!,
-          automation.message,
-          whatsappAttachments
-        );
-
-      if (!whatsappResult.success) {
-        await prisma.$executeRaw`
-          INSERT INTO "AutomationSend"
-            ("automationId", "contactId", "status", "error")
-          VALUES
-            (
-              ${automation.id},
-              ${contact.id},
-              'failed',
-              ${whatsappResult.error || "WhatsApp sending failed"}
-            )
-          ON CONFLICT ("automationId", "contactId")
-          DO UPDATE SET
-            "status" = 'failed',
-            "error" = ${whatsappResult.error || "WhatsApp sending failed"}
-        `;
-
-        results.push({
-          automationId: automation.id,
-          automationName: automation.name,
-          contactId: contact.id,
-          email: contact.email,
-          phone: contact.phone,
-          status: "failed",
-          reason:
-            whatsappResult.error ||
-            "WhatsApp sending failed",
-        });
-
-        continue;
-      }
-    }
-
-    await prisma.$executeRaw`
-      INSERT INTO "AutomationSend"
-        ("automationId", "contactId", "status")
-      VALUES
-        (${automation.id}, ${contact.id}, 'sent')
-      ON CONFLICT ("automationId", "contactId")
-      DO UPDATE SET
-        "status" = 'sent',
-        "sentAt" = CURRENT_TIMESTAMP,
-        "error" = NULL
-    `;
-
-    results.push({
-      automationId: automation.id,
-      automationName: automation.name,
-      contactId: contact.id,
-      email: contact.email,
-      phone: contact.phone,
-      status: "sent",
-    });
-  }
-
-  return results;
+function normalizePhone(phone: string | null | undefined) {
+  return (phone || "").replace(/[^\d]/g, "");
 }
 
-export async function POST(req: Request) {
+function normalizeText(text: string | null | undefined) {
+  return (text || "").trim().toLowerCase();
+}
+
+function personalizeReply(reply: string, firstName: string | null) {
+  return reply.replace(
+    /\{first\s*name\}/gi,
+    firstName || "there"
+  );
+}
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+
+  const mode = searchParams.get("hub.mode");
+  const token = searchParams.get("hub.verify_token");
+  const challenge = searchParams.get("hub.challenge");
+
+  const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
+
+  if (
+    mode === "subscribe" &&
+    token &&
+    verifyToken &&
+    token === verifyToken
+  ) {
+    return new NextResponse(challenge || "", {
+      status: 200,
+    });
+  }
+
+  return NextResponse.json(
+    { error: "Forbidden" },
+    { status: 403 }
+  );
+}
+
+export async function POST(request: NextRequest) {
   try {
-    const session = await auth();
+    const body = await request.json();
 
-    let userId: string | null = null;
-    let isCronRequest = false;
+    console.log(
+      "WhatsApp webhook received:",
+      JSON.stringify(body, null, 2)
+    );
 
-    if (session?.user?.email) {
-      const user = await prisma.user.findUnique({
-        where: {
-          email: session.user.email,
-        },
-      });
-
-      if (!user) {
-        return NextResponse.json(
-          { error: "User not found" },
-          { status: 404 }
-        );
-      }
-
-      userId = user.id;
-    } else {
-      const authHeader =
-        req.headers.get("authorization");
-
-      const cronSecret =
-        process.env.CRON_SECRET;
-
-      if (
-        !cronSecret ||
-        authHeader !== `Bearer ${cronSecret}`
-      ) {
-        return NextResponse.json(
-          { error: "Unauthorized" },
-          { status: 401 }
-        );
-      }
-
-      isCronRequest = true;
+    if (body?.object !== "whatsapp_business_account") {
+      return NextResponse.json({ received: true });
     }
 
-    const body =
-      await req.json().catch(() => ({}));
+    for (const entry of body?.entry || []) {
+      for (const change of entry?.changes || []) {
+        const value = change?.value;
 
-    const requestedAutomationId =
-      body?.automationId;
+        if (!value) {
+          continue;
+        }
 
-    if (isCronRequest) {
-      const enabledAutomations =
-        await prisma.automation.findMany({
-          where: {
-            enabled: true,
-          },
-          select: {
-            id: true,
-            userId: true,
-          },
-        });
+        /*
+         * ---------------------------------------------------------
+         * DELIVERY STATUS EVENTS
+         * ---------------------------------------------------------
+         */
 
-      const allResults: SendResult[] = [];
+        for (const status of value?.statuses || []) {
+          console.log("WhatsApp message status:", {
+            messageId: status?.id,
+            recipient: status?.recipient_id,
+            status: status?.status,
+            timestamp: status?.timestamp,
+            errors: status?.errors || [],
+          });
+        }
 
-      for (const automation of enabledAutomations) {
-        try {
-          const results =
-            await runAutomation(
-              automation.id,
-              automation.userId
+        /*
+         * ---------------------------------------------------------
+         * INCOMING WHATSAPP MESSAGES
+         * ---------------------------------------------------------
+         */
+
+        for (const incomingMessage of value?.messages || []) {
+          const messageType = incomingMessage?.type;
+          const senderPhone = normalizePhone(
+            incomingMessage?.from
+          );
+
+          if (!senderPhone) {
+            continue;
+          }
+
+          console.log("Incoming WhatsApp message:", {
+            from: senderPhone,
+            type: messageType,
+            messageId: incomingMessage?.id,
+          });
+
+          /*
+           * Auto Replies currently handle text messages.
+           */
+
+          if (messageType !== "text") {
+            console.log(
+              "Auto Reply skipped: incoming message is not text."
+            );
+            continue;
+          }
+
+          const incomingText =
+            incomingMessage?.text?.body || "";
+
+          const normalizedIncomingText =
+            normalizeText(incomingText);
+
+          if (!normalizedIncomingText) {
+            continue;
+          }
+
+          /*
+           * Find the FlowPilot contact using the WhatsApp number.
+           */
+
+          const contacts = await prisma.contact.findMany({
+            where: {
+              OR: [
+                {
+                  phone: senderPhone,
+                },
+                {
+                  phone: `+${senderPhone}`,
+                },
+              ],
+            },
+            include: {
+              lists: {
+                include: {
+                  autoReplyRules: {
+                    where: {
+                      enabled: true,
+                      channel: "WHATSAPP",
+                    },
+                    orderBy: {
+                      createdAt: "asc",
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          if (contacts.length === 0) {
+            console.log(
+              "Auto Reply skipped: sender is not a FlowPilot contact.",
+              senderPhone
+            );
+            continue;
+          }
+
+          let matchedRule:
+            | {
+                id: string;
+                reply: string;
+                trigger: string;
+                listId: string;
+              }
+            | null = null;
+
+          let matchedContact = contacts[0];
+
+          /*
+           * Search the contact's lists for a matching
+           * enabled WhatsApp Auto Reply rule.
+           */
+
+          for (const contact of contacts) {
+            for (const list of contact.lists) {
+              for (const rule of list.autoReplyRules) {
+                const trigger = normalizeText(rule.trigger);
+
+                if (!trigger) {
+                  continue;
+                }
+
+                /*
+                 * Match either an exact message or a message
+                 * containing the trigger phrase.
+                 */
+
+                if (
+                  normalizedIncomingText === trigger ||
+                  normalizedIncomingText.includes(trigger)
+                ) {
+                  matchedRule = {
+                    id: rule.id,
+                    reply: rule.reply,
+                    trigger: rule.trigger,
+                    listId: list.id,
+                  };
+
+                  matchedContact = contact;
+                  break;
+                }
+              }
+
+              if (matchedRule) {
+                break;
+              }
+            }
+
+            if (matchedRule) {
+              break;
+            }
+          }
+
+          if (!matchedRule) {
+            console.log(
+              "Auto Reply: no matching rule found.",
+              {
+                senderPhone,
+                message: incomingText,
+              }
             );
 
-          allResults.push(...results);
-        } catch (error) {
-          console.error(
-            `Automation ${automation.id} failed:`,
-            error
+            continue;
+          }
+
+          /*
+           * Get the contact's first name for personalization.
+           */
+
+          const firstName =
+            matchedContact.name?.trim().split(/\s+/)[0] || null;
+
+          const replyMessage = personalizeReply(
+            matchedRule.reply,
+            firstName
           );
+
+          console.log("Auto Reply matched:", {
+            ruleId: matchedRule.id,
+            trigger: matchedRule.trigger,
+            senderPhone,
+            reply: replyMessage,
+          });
+
+          /*
+           * Send the automatic WhatsApp reply.
+           */
+
+          const sendResult = await sendWhatsAppMessage(
+            senderPhone,
+            replyMessage
+          );
+
+          if (!sendResult.success) {
+            console.error("Auto Reply send failed:", {
+              ruleId: matchedRule.id,
+              senderPhone,
+              error: sendResult.error,
+            });
+          } else {
+            console.log("Auto Reply sent successfully:", {
+              ruleId: matchedRule.id,
+              senderPhone,
+              messageId: sendResult.messageId,
+            });
+          }
         }
       }
-
-      return NextResponse.json({
-        success: true,
-        mode: "cron",
-        processed: allResults.length,
-        sent: allResults.filter(
-          (r) => r.status === "sent"
-        ).length,
-        skipped: allResults.filter(
-          (r) => r.status === "skipped"
-        ).length,
-        failed: allResults.filter(
-          (r) => r.status === "failed"
-        ).length,
-        results: allResults,
-      });
     }
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    if (!requestedAutomationId) {
-      return NextResponse.json(
-        {
-          error:
-            "Automation id is required",
-        },
-        { status: 400 }
-      );
-    }
-
-    const results =
-      await runAutomation(
-        requestedAutomationId,
-        userId
-      );
 
     return NextResponse.json({
-      success: true,
-      mode: "manual",
-      processed: results.length,
-      sent: results.filter(
-        (r) => r.status === "sent"
-      ).length,
-      skipped: results.filter(
-        (r) => r.status === "skipped"
-      ).length,
-      failed: results.filter(
-        (r) => r.status === "failed"
-      ).length,
-      results,
+      received: true,
     });
   } catch (error) {
-    console.error(
-      "Automation run error:",
-      error
-    );
+    console.error("WhatsApp webhook error:", error);
 
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to run automation",
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      received: true,
+    });
   }
 }
