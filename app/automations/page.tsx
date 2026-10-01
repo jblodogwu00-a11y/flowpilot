@@ -16,6 +16,7 @@ type Automation = {
   id: string;
   name: string;
   message: string;
+  channel: "EMAIL" | "WHATSAPP";
   enabled: boolean;
   list: {
     id: string;
@@ -54,25 +55,35 @@ export default function Automations() {
 
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
+  const [channel, setChannel] =
+    useState<"EMAIL" | "WHATSAPP">("EMAIL");
   const [listId, setListId] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
 
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editMessage, setEditMessage] = useState("");
-  const [editAttachments, setEditAttachments] = useState<File[]>([]);
+  const [editChannel, setEditChannel] =
+    useState<"EMAIL" | "WHATSAPP">("EMAIL");
+  const [editAttachments, setEditAttachments] =
+    useState<File[]>([]);
   const [replaceEditAttachments, setReplaceEditAttachments] =
     useState(false);
   const [editSaving, setEditSaving] = useState(false);
 
-  const [runningId, setRunningId] = useState<string | null>(null);
+  const [runningId, setRunningId] =
+    useState<string | null>(null);
   const [runMessage, setRunMessage] = useState("");
 
-  const createFileInputRef = useRef<HTMLInputElement | null>(null);
-  const editFileInputRef = useRef<HTMLInputElement | null>(null);
+  const createFileInputRef =
+    useRef<HTMLInputElement | null>(null);
+
+  const editFileInputRef =
+    useRef<HTMLInputElement | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -130,7 +141,9 @@ export default function Automations() {
 
   function removeCreateAttachment(index: number) {
     setAttachments((current) =>
-      current.filter((_, fileIndex) => fileIndex !== index)
+      current.filter(
+        (_, fileIndex) => fileIndex !== index
+      )
     );
   }
 
@@ -155,7 +168,9 @@ export default function Automations() {
 
   function removeEditAttachment(index: number) {
     setEditAttachments((current) =>
-      current.filter((_, fileIndex) => fileIndex !== index)
+      current.filter(
+        (_, fileIndex) => fileIndex !== index
+      )
     );
   }
 
@@ -166,8 +181,18 @@ export default function Automations() {
 
     setError("");
 
+    if (!name.trim()) {
+      setError("Please enter an automation name.");
+      return;
+    }
+
     if (!listId) {
       setError("Please select a contact list.");
+      return;
+    }
+
+    if (!message.trim()) {
+      setError("Please enter a message.");
       return;
     }
 
@@ -178,6 +203,7 @@ export default function Automations() {
 
       formData.append("name", name);
       formData.append("message", message);
+      formData.append("channel", channel);
       formData.append("listId", listId);
 
       attachments.forEach((file) => {
@@ -204,6 +230,7 @@ export default function Automations() {
 
       setName("");
       setMessage("");
+      setChannel("EMAIL");
       setListId("");
       setAttachments([]);
       setShowForm(false);
@@ -222,71 +249,50 @@ export default function Automations() {
     setEditingId(automation.id);
     setEditName(automation.name);
     setEditMessage(automation.message);
+    setEditChannel(automation.channel);
     setEditAttachments([]);
     setReplaceEditAttachments(false);
     setRunMessage("");
+    setError("");
   }
 
-  async function handleEditSave(id: string) {
+  async function handleEditSave(
+    automation: Automation
+  ) {
     setEditSaving(true);
     setError("");
 
     try {
+      const formData = new FormData();
+
+      formData.append("id", automation.id);
+      formData.append("name", editName);
+      formData.append("message", editMessage);
+      formData.append("channel", editChannel);
+      formData.append("enabled", "true");
+
       if (replaceEditAttachments) {
-        const formData = new FormData();
-
-        formData.append("id", id);
-        formData.append("name", editName);
-        formData.append("message", editMessage);
-        formData.append("enabled", "true");
-
         editAttachments.forEach((file) => {
           formData.append("attachments", file);
         });
+      }
 
-        const response = await fetch(
-          "/api/automations",
-          {
-            method: "PATCH",
-            body: formData,
-          }
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          setError(
-            data.error ||
-              "Failed to update automation."
-          );
-          return;
+      const response = await fetch(
+        "/api/automations",
+        {
+          method: "PATCH",
+          body: formData,
         }
-      } else {
-        const response = await fetch(
-          "/api/automations",
-          {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              id,
-              name: editName,
-              message: editMessage,
-              enabled: true,
-            }),
-          }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(
+          data.error ||
+            "Failed to update automation."
         );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          setError(
-            data.error ||
-              "Failed to update automation."
-          );
-          return;
-        }
+        return;
       }
 
       setEditingId(null);
@@ -360,7 +366,13 @@ export default function Automations() {
       }
 
       setRunMessage(
-        `"${automation.name}" finished — ${data.sent || 0} sent, ${data.skipped || 0} skipped, ${data.failed || 0} failed.`
+        `"${automation.name}" finished — ${
+          data.sent || 0
+        } sent, ${
+          data.skipped || 0
+        } skipped, ${
+          data.failed || 0
+        } failed.`
       );
     } catch {
       setRunMessage(
@@ -417,7 +429,8 @@ export default function Automations() {
             </h1>
 
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Create automated messages for contacts in your lists.
+              Create automated Email and WhatsApp messages
+              for contacts in your lists.
             </p>
           </div>
 
@@ -450,6 +463,26 @@ export default function Automations() {
             />
 
             <select
+              value={channel}
+              onChange={(e) =>
+                setChannel(
+                  e.target.value as
+                    | "EMAIL"
+                    | "WHATSAPP"
+                )
+              }
+              className="rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 px-4 py-3 text-slate-900 dark:text-white"
+            >
+              <option value="EMAIL">
+                Email
+              </option>
+
+              <option value="WHATSAPP">
+                WhatsApp
+              </option>
+            </select>
+
+            <select
               value={listId}
               onChange={(e) =>
                 setListId(e.target.value)
@@ -472,63 +505,89 @@ export default function Automations() {
             </select>
 
             <textarea
-              placeholder="Message to send"
+              placeholder={
+                channel === "WHATSAPP"
+                  ? "WhatsApp message to send"
+                  : "Email message to send"
+              }
               value={message}
               onChange={(e) =>
                 setMessage(e.target.value)
               }
               required
-              rows={4}
+              rows={5}
               className="rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 px-4 py-3 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
             />
 
             <div className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
-              <input
-                ref={createFileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={addCreateAttachments}
-              />
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">
+                    Attachments
+                  </p>
 
-              <button
-                type="button"
-                onClick={() =>
-                  createFileInputRef.current?.click()
-                }
-                className="rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                📎 Attach File
-              </button>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Attach files to this{" "}
+                    {channel === "WHATSAPP"
+                      ? "WhatsApp"
+                      : "Email"}{" "}
+                    automation.
+                  </p>
+                </div>
+
+                <input
+                  ref={createFileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={addCreateAttachments}
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    createFileInputRef.current?.click()
+                  }
+                  className="shrink-0 rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  📎 Attach File
+                </button>
+              </div>
 
               {attachments.length > 0 && (
-                <div className="mt-3 grid gap-2">
-                  {attachments.map((file, index) => (
-                    <div
-                      key={`${file.name}-${index}`}
-                      className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
-                          {file.name}
-                        </p>
-
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {formatFileSize(file.size)}
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          removeCreateAttachment(index)
-                        }
-                        className="shrink-0 text-sm font-semibold text-red-600 dark:text-red-400 hover:underline"
+                <div className="mt-4 grid gap-2">
+                  {attachments.map(
+                    (file, index) => (
+                      <div
+                        key={`${file.name}-${index}`}
+                        className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2"
                       >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">
+                            {file.name}
+                          </p>
+
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {formatFileSize(
+                              file.size
+                            )}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeCreateAttachment(
+                              index
+                            )
+                          }
+                          className="shrink-0 text-sm font-semibold text-red-600 dark:text-red-400 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )
+                  )}
                 </div>
               )}
             </div>
@@ -592,6 +651,26 @@ export default function Automations() {
                         className="w-full rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 px-3 py-2 text-slate-900 dark:text-white mb-3"
                       />
 
+                      <select
+                        value={editChannel}
+                        onChange={(e) =>
+                          setEditChannel(
+                            e.target.value as
+                              | "EMAIL"
+                              | "WHATSAPP"
+                          )
+                        }
+                        className="w-full rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 px-3 py-2 text-slate-900 dark:text-white mb-3"
+                      >
+                        <option value="EMAIL">
+                          Email
+                        </option>
+
+                        <option value="WHATSAPP">
+                          WhatsApp
+                        </option>
+                      </select>
+
                       <textarea
                         value={editMessage}
                         onChange={(e) =>
@@ -599,7 +678,7 @@ export default function Automations() {
                             e.target.value
                           )
                         }
-                        rows={4}
+                        rows={5}
                         className="w-full rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 px-3 py-2 text-slate-900 dark:text-white mb-3"
                       />
 
@@ -608,16 +687,22 @@ export default function Automations() {
                           Attachments
                         </p>
 
-                        {automation.attachments.length > 0 && (
+                        {automation.attachments.length >
+                          0 && (
                           <div className="mb-3 grid gap-2">
                             {automation.attachments.map(
                               (attachment) => (
                                 <div
-                                  key={attachment.id}
+                                  key={
+                                    attachment.id
+                                  }
                                   className="rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2"
                                 >
                                   <p className="truncate text-sm">
-                                    📎 {attachment.filename}
+                                    📎{" "}
+                                    {
+                                      attachment.filename
+                                    }
                                   </p>
                                 </div>
                               )
@@ -626,11 +711,15 @@ export default function Automations() {
                         )}
 
                         <input
-                          ref={editFileInputRef}
+                          ref={
+                            editFileInputRef
+                          }
                           type="file"
                           multiple
                           className="hidden"
-                          onChange={addEditAttachments}
+                          onChange={
+                            addEditAttachments
+                          }
                         />
 
                         <button
@@ -646,7 +735,9 @@ export default function Automations() {
                         <label className="mt-3 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                           <input
                             type="checkbox"
-                            checked={replaceEditAttachments}
+                            checked={
+                              replaceEditAttachments
+                            }
                             onChange={(e) =>
                               setReplaceEditAttachments(
                                 e.target.checked
@@ -659,14 +750,17 @@ export default function Automations() {
 
                         {replaceEditAttachments && (
                           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                            Saving with this option checked will replace
-                            the current attachments. If no new files are
-                            selected, the existing attachments will be
+                            Saving with this option
+                            checked will replace the
+                            current attachments. If no
+                            new files are selected, the
+                            existing attachments will be
                             cleared.
                           </p>
                         )}
 
-                        {editAttachments.length > 0 && (
+                        {editAttachments.length >
+                          0 && (
                           <div className="mt-3 grid gap-2">
                             {editAttachments.map(
                               (file, index) => (
@@ -680,14 +774,18 @@ export default function Automations() {
                                     </p>
 
                                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                                      {formatFileSize(file.size)}
+                                      {formatFileSize(
+                                        file.size
+                                      )}
                                     </p>
                                   </div>
 
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      removeEditAttachment(index)
+                                      removeEditAttachment(
+                                        index
+                                      )
                                     }
                                     className="shrink-0 text-sm font-semibold text-red-600 dark:text-red-400 hover:underline"
                                   >
@@ -704,7 +802,7 @@ export default function Automations() {
                         <button
                           onClick={() =>
                             handleEditSave(
-                              automation.id
+                              automation
                             )
                           }
                           disabled={editSaving}
@@ -719,7 +817,9 @@ export default function Automations() {
                           onClick={() => {
                             setEditingId(null);
                             setEditAttachments([]);
-                            setReplaceEditAttachments(false);
+                            setReplaceEditAttachments(
+                              false
+                            );
                           }}
                           className="rounded border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
                         >
@@ -750,13 +850,21 @@ export default function Automations() {
                                 ? "Active"
                                 : "Paused"}
                             </span>
+
+                            <span className="text-xs rounded-full px-2 py-0.5 bg-blue-100 dark:bg-blue-600/20 text-blue-700 dark:text-blue-300">
+                              {automation.channel ===
+                              "WHATSAPP"
+                                ? "WhatsApp"
+                                : "Email"}
+                            </span>
                           </div>
 
-                          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 whitespace-pre-wrap">
                             {automation.message}
                           </p>
 
-                          {automation.attachments.length > 0 && (
+                          {automation.attachments.length >
+                            0 && (
                             <div className="mt-3">
                               <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                                 📎 Attachments
@@ -766,10 +874,14 @@ export default function Automations() {
                                 {automation.attachments.map(
                                   (attachment) => (
                                     <span
-                                      key={attachment.id}
+                                      key={
+                                        attachment.id
+                                      }
                                       className="rounded-full bg-slate-200 dark:bg-slate-800 px-2.5 py-1 text-xs text-slate-600 dark:text-slate-300"
                                     >
-                                      {attachment.filename}
+                                      {
+                                        attachment.filename
+                                      }
                                     </span>
                                   )
                                 )}
