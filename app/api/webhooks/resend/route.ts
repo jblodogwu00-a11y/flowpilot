@@ -1,0 +1,282 @@
+import { NextResponse } from "next/server";
+import { PrismaClient, AutoReplyChannel } from "@prisma/client";
+import { Resend } from "resend";
+import { sendEmail } from "../../../lib/email";
+
+const prisma = new PrismaClient();
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function extractEmailAddress(value: string) {
+  const match = value.match(/<([^>]+)>/);
+
+  if (match?.[1]) {
+    return normalizeEmail(match[1]);
+  }
+
+  return normalizeEmail(value);
+}
+
+function stripHtml(html: string) {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function personalizeReply(reply: string, firstName: string | null) {
+  const safeFirstName = firstName?.trim() || "there";
+
+  return reply.replace(/\{first name\}/gi, safeFirstName);
+}
+
+export async function POST(req: Request) {
+  try {
+    const payload = await req.text();
+
+    const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      console.error(
+        "Resend webhook error: RESEND_WEBHOOK_SECRET is not configured."
+      );
+
+      return NextResponse.json(
+        { error: "Webhook secret is not configured." },
+        { status: 500 }
+      );
+    }
+
+    const event = resend.webhooks.verify({
+      payload,
+      headers: {
+        id: req.headers.get("svix-id") || "",
+        timestamp: req.headers.get("svix-timestamp") || "",
+        signature: req.headers.get("svix-signature") || "",
+      },
+      webhookSecret,
+    });
+
+    console.log("Resend webhook received:", event.type);
+
+    if (event.type !== "email.received") {
+      return NextResponse.json({
+        success: true,
+        ignored: true,
+      });
+    }
+
+    const emailId = event.data.email_id;
+
+    if (!emailId) {
+      console.error("Resend webhook error: Missing email_id.");
+
+      return NextResponse.json(
+        { error: "Missing email_id." },
+        { status: 400 }
+      );
+    }
+
+    const { data: receivedEmail, error: receivingError } =
+      await resend.emails.receiving.get(emailId);
+
+    if (receivingError || !receivedEmail) {
+      console.error(
+        "Failed to retrieve received email:",
+        receivingError
+      );
+
+      return NextResponse.json(
+        { error: "Failed to retrieve received email." },
+        { status: 500 }
+      );
+    }
+
+    const senderEmail = extractEmailAddress(event.data.from || "");
+
+    if (!senderEmail) {
+      console.log("Resend webhook: No sender email found.");
+
+      return NextResponse.json({
+        success: true,
+        ignored: true,
+        reason: "No sender email found.",
+      });
+    }
+
+    console.log("Incoming email sender:", senderEmail);
+
+    const contact = await prisma.contact.findFirst({
+      where: {
+        OR: [
+          {
+            email: senderEmail,
+          },
+          {
+            email: {
+              equals: senderEmail,
+              mode: "insensitive",
+            },
+          },
+        ],
+      },
+      include: {
+        lists: {
+          include: {
+            autoReplyRules: {
+              where: {
+                enabled: true,
+                channel: AutoReplyChannel.EMAIL,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!contact) {
+      console.log(
+        "Email Auto Reply skipped: sender is not a FlowPilot contact.",
+        senderEmail
+      );
+
+      return NextResponse.json({
+        success: true,
+        ignored: true,
+        reason: "Sender is not a FlowPilot contact.",
+      });
+    }
+
+    const incomingText =
+      receivedEmail.text?.trim() ||
+      stripHtml(receivedEmail.html || "");
+
+    if (!incomingText) {
+      console.log("Email Auto Reply skipped: email has no readable text.");
+
+      return NextResponse.json({
+        success: true,
+        ignored: true,
+        reason: "Email has no readable text.",
+      });
+    }
+
+    console.log("Incoming email text:", incomingText);
+
+    const incomingTextLower = incomingText.toLowerCase();
+
+    let matchedRule = null;
+
+    for (const list of contact.lists) {
+      for (const rule of list.autoReplyRules) {
+        const trigger = rule.trigger.trim().toLowerCase();
+
+        if (!trigger) {
+          continue;
+        }
+
+        if (
+          incomingTextLower === trigger ||
+          incomingTextLower.includes(trigger)
+        ) {
+          matchedRule = rule;
+          break;
+        }
+      }
+
+      if (matchedRule) {
+        break;
+      }
+    }
+
+    if (!matchedRule) {
+      console.log(
+        "Email Auto Reply skipped: no matching rule.",
+        senderEmail
+      );
+
+      return NextResponse.json({
+        success: true,
+        ignored: true,
+        reason: "No matching Email Auto Reply rule.",
+      });
+    }
+
+    const replyText = personalizeReply(
+      matchedRule.reply,
+      contact.name?.trim().split(/\s+/)[0] || null
+    );
+
+    const originalSubject =
+      event.data.subject?.trim() || "Your message";
+
+    const replySubject = originalSubject
+      .toLowerCase()
+      .startsWith("re:")
+      ? originalSubject
+      : `Re: ${originalSubject}`;
+
+    console.log("Email Auto Reply matched:", {
+      ruleId: matchedRule.id,
+      trigger: matchedRule.trigger,
+      senderEmail,
+      reply: replyText,
+    });
+
+    const sendResult = await sendEmail(
+      senderEmail,
+      replySubject,
+      replyText
+    );
+
+    if (!sendResult.success) {
+      console.error("Email Auto Reply send failed:", {
+        ruleId: matchedRule.id,
+        senderEmail,
+        error: sendResult.error,
+      });
+
+      return NextResponse.json(
+        {
+          error: sendResult.error || "Failed to send Email Auto Reply.",
+        },
+        { status: 500 }
+      );
+    }
+
+    console.log("Email Auto Reply sent successfully:", {
+      ruleId: matchedRule.id,
+      senderEmail,
+    });
+
+    return NextResponse.json({
+      success: true,
+      replied: true,
+      ruleId: matchedRule.id,
+      recipient: senderEmail,
+    });
+  } catch (error) {
+    console.error("Resend webhook error:", error);
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to process Resend webhook.",
+      },
+      { status: 400 }
+    );
+  }
+}
