@@ -125,6 +125,9 @@ export async function POST(req: Request) {
 
     console.log("Incoming email sender:", senderEmail);
 
+    /*
+     * Find the FlowPilot contact directly by email.
+     */
     const contact = await prisma.contact.findFirst({
       where: {
         OR: [
@@ -138,18 +141,6 @@ export async function POST(req: Request) {
             },
           },
         ],
-      },
-      include: {
-        lists: {
-          include: {
-            autoReplyRules: {
-              where: {
-                enabled: true,
-                channel: AutoReplyChannel.EMAIL,
-              },
-            },
-          },
-        },
       },
     });
 
@@ -165,6 +156,80 @@ export async function POST(req: Request) {
         reason: "Sender is not a FlowPilot contact.",
       });
     }
+
+    console.log("FlowPilot contact found:", {
+      contactId: contact.id,
+      contactName: contact.name,
+      contactEmail: contact.email,
+      userId: contact.userId,
+    });
+
+    /*
+     * Get the lists that this exact contact belongs to.
+     */
+    const contactLists = await prisma.contactList.findMany({
+      where: {
+        userId: contact.userId,
+        contacts: {
+          some: {
+            id: contact.id,
+          },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    console.log(
+      "Contact lists found:",
+      contactLists.map((list) => ({
+        id: list.id,
+        name: list.name,
+      }))
+    );
+
+    if (contactLists.length === 0) {
+      console.log(
+        "Email Auto Reply skipped: contact is not assigned to any list."
+      );
+
+      return NextResponse.json({
+        success: true,
+        ignored: true,
+        reason: "Contact is not assigned to a FlowPilot list.",
+      });
+    }
+
+    /*
+     * Find Email Auto Reply rules directly from the lists
+     * that contain this exact contact.
+     */
+    const autoReplyRules = await prisma.autoReplyRule.findMany({
+      where: {
+        userId: contact.userId,
+        enabled: true,
+        channel: AutoReplyChannel.EMAIL,
+        listId: {
+          in: contactLists.map((list) => list.id),
+        },
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
+    console.log(
+      "Email Auto Reply rules found:",
+      autoReplyRules.map((rule) => ({
+        id: rule.id,
+        listId: rule.listId,
+        trigger: rule.trigger,
+        enabled: rule.enabled,
+        channel: rule.channel,
+      }))
+    );
 
     /*
      * Resend's received-email API provides the actual email body.
@@ -197,34 +262,39 @@ export async function POST(req: Request) {
 
     const incomingTextLower = incomingText.toLowerCase();
 
+    /*
+     * Match the incoming email against the Email Auto Reply rules.
+     */
     let matchedRule = null;
 
-    for (const list of contact.lists) {
-      for (const rule of list.autoReplyRules) {
-        const trigger = rule.trigger.trim().toLowerCase();
+    for (const rule of autoReplyRules) {
+      const trigger = rule.trigger.trim().toLowerCase();
 
-        if (!trigger) {
-          continue;
-        }
-
-        if (
-          incomingTextLower === trigger ||
-          incomingTextLower.includes(trigger)
-        ) {
-          matchedRule = rule;
-          break;
-        }
+      if (!trigger) {
+        continue;
       }
 
-      if (matchedRule) {
+      if (
+        incomingTextLower === trigger ||
+        incomingTextLower.includes(trigger)
+      ) {
+        matchedRule = rule;
         break;
       }
     }
 
     if (!matchedRule) {
       console.log(
-        "Email Auto Reply skipped: no matching rule.",
-        senderEmail
+        "Email Auto Reply skipped: no matching Email Auto Reply rule.",
+        {
+          senderEmail,
+          incomingText,
+          availableRules: autoReplyRules.map((rule) => ({
+            id: rule.id,
+            listId: rule.listId,
+            trigger: rule.trigger,
+          })),
+        }
       );
 
       return NextResponse.json({
@@ -234,9 +304,15 @@ export async function POST(req: Request) {
       });
     }
 
+    /*
+     * Personalize the reply using the contact's first name.
+     */
+    const firstName =
+      contact.name?.trim().split(/\s+/)[0] || null;
+
     const replyText = personalizeReply(
       matchedRule.reply,
-      contact.name?.trim().split(/\s+/)[0] || null
+      firstName
     );
 
     const originalSubject =
@@ -250,11 +326,16 @@ export async function POST(req: Request) {
 
     console.log("Email Auto Reply matched:", {
       ruleId: matchedRule.id,
+      listId: matchedRule.listId,
       trigger: matchedRule.trigger,
       senderEmail,
+      firstName,
       reply: replyText,
     });
 
+    /*
+     * Send the automatic email reply through Resend.
+     */
     const sendResult = await sendEmail(
       senderEmail,
       replySubject,
