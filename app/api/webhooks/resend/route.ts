@@ -103,6 +103,14 @@ export async function POST(req: Request) {
       );
     }
 
+    console.log("Retrieved Resend email:", {
+      id: receivedEmail.id,
+      from: receivedEmail.from,
+      subject: receivedEmail.subject,
+      textLength: receivedEmail.text?.length || 0,
+      htmlLength: receivedEmail.html?.length || 0,
+    });
+
     const senderEmail = extractEmailAddress(event.data.from || "");
 
     if (!senderEmail) {
@@ -158,12 +166,25 @@ export async function POST(req: Request) {
       });
     }
 
+    /*
+     * Resend's received-email API provides the actual email body.
+     * Prefer plain text and fall back to HTML.
+     */
     const incomingText =
       receivedEmail.text?.trim() ||
       stripHtml(receivedEmail.html || "");
 
+    console.log("Retrieved email body:", {
+      hasText: Boolean(receivedEmail.text),
+      hasHtml: Boolean(receivedEmail.html),
+      textLength: receivedEmail.text?.length || 0,
+      htmlLength: receivedEmail.html?.length || 0,
+    });
+
     if (!incomingText) {
-      console.log("Email Auto Reply skipped: email has no readable text.");
+      console.log(
+        "Email Auto Reply skipped: email has no readable text."
+      );
 
       return NextResponse.json({
         success: true,
@@ -249,7 +270,9 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         {
-          error: sendResult.error || "Failed to send Email Auto Reply.",
+          error:
+            sendResult.error ||
+            "Failed to send Email Auto Reply.",
         },
         { status: 500 }
       );
