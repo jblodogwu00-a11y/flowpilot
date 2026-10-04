@@ -198,7 +198,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: true,
         ignored: true,
-        reason: "Contact is not assigned to a FlowPilot list.",
+        reason: "Contact is not assigned to any list.",
       });
     }
 
@@ -330,17 +330,33 @@ export async function POST(req: Request) {
       trigger: matchedRule.trigger,
       senderEmail,
       firstName,
-      reply: replyText,
+      replySubject,
+      replyText,
     });
 
     /*
      * Send the automatic email reply through Resend.
      */
+    console.log("Sending Email Auto Reply through Resend:", {
+      to: senderEmail,
+      subject: replySubject,
+    });
+
     const sendResult = await sendEmail(
       senderEmail,
       replySubject,
       replyText
     );
+
+    /*
+     * IMPORTANT DIAGNOSTIC:
+     * Log the complete result returned by the email helper.
+     */
+    console.log("Resend sendEmail result:", {
+      success: sendResult.success,
+      data: sendResult.data ?? null,
+      error: sendResult.error ?? null,
+    });
 
     if (!sendResult.success) {
       console.error("Email Auto Reply send failed:", {
@@ -351,6 +367,8 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         {
+          success: false,
+          replied: false,
           error:
             sendResult.error ||
             "Failed to send Email Auto Reply.",
@@ -362,6 +380,7 @@ export async function POST(req: Request) {
     console.log("Email Auto Reply sent successfully:", {
       ruleId: matchedRule.id,
       senderEmail,
+      resendResponse: sendResult.data ?? null,
     });
 
     return NextResponse.json({
@@ -369,6 +388,7 @@ export async function POST(req: Request) {
       replied: true,
       ruleId: matchedRule.id,
       recipient: senderEmail,
+      resendResponse: sendResult.data ?? null,
     });
   } catch (error) {
     console.error("Resend webhook error:", error);
